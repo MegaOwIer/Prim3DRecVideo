@@ -11,9 +11,9 @@ import pytorch3d.structures as p3dstr
 import torchvision.transforms.functional as F
 import pickle
 
-import sys
-sys.path.append('/Disk2/siqi/NewPrimReg')
-from smpl_webuser.serialization import load_model
+# import sys
+# sys.path.append('/Disk2/siqi/NewPrimReg')
+# from smpl_webuser.serialization import load_model
 
 
 class Resize_with_pad:
@@ -55,7 +55,7 @@ class Datasets(object):
         self.image_size = image_size
         self.transform = T.Resize((self.image_size, self.image_size))
 
-        self.data_list = # TODO
+        self.data_list = ... # TODO
 
     def __len__(self):
         return len(self.data_list)

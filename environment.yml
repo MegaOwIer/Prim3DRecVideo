@@ -118,6 +118,7 @@ dependencies:
   - pexpect=4.8.0=pyhd3eb1b0_3
   - pickleshare=0.7.5=pyhd3eb1b0_1003
   - pillow=9.2.0=py38hace64e9_1
+  - pip=24.0
   - portalocker=2.5.1=py38h578d9bd_0
   - prometheus_client=0.14.1=py38h06a4308_0
   - prompt-toolkit=3.0.20=pyhd3eb1b0_0

@@ -19,6 +19,8 @@ try:
 except ImportError:
     from yaml import Loader
 
+import datasets
+from renderer_nvdiff import Nvdiffrast
 
 """ taken from https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse"""
 def str2bool(v):
@@ -230,7 +232,7 @@ def train():
     config = load_config(args.config_file)
     epochs = config["training"].get("epochs", 500)
 
-    net = # TODO: Create the network
+    net = ... # TODO: Create the network
     if torch.cuda.device_count() > 1:
         net = torch.nn.DataParallel(net)
     net.cuda()
