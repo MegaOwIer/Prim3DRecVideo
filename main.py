@@ -1,25 +1,28 @@
 '''
 The main code for training the model
 '''
-import os
 import argparse
+import json
+import os
+import random
+import string
+
 import numpy as np
 import scipy.io
 import torch
+import torch.utils.data
+import yaml
+from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from tqdm import tqdm
-from tensorboardX import SummaryWriter
-import yaml
-import json
-import torch.utils.data
-import string
-import random
+
 try:
     from yaml import CLoader as Loader
 except ImportError:
     from yaml import Loader
 
 import datasets
+from model import Prim3DModel
 from renderer_nvdiff import Nvdiffrast
 
 """ taken from https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse"""
@@ -106,11 +109,13 @@ def optimizer_factory(config, parameters):
             torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay),
             config.get("aggregate", 1)
         )
-    elif optimizer == "RAdam":
-        return OptimizerWrapper(
-            torch.optim.RAdam(parameters, lr=lr, weight_decay=weight_decay),
-            config.get("aggregate", 1)
-        )
+    # ! RAdam is available since torch 1.10 while the environment gives torch 1.9.x
+    # ! temporarily disable these lines
+    # elif optimizer == "RAdam":
+    #     return OptimizerWrapper(
+    #         torch.optim.RAdam(parameters, lr=lr, weight_decay=weight_decay),
+    #         config.get("aggregate", 1)
+    #     )
     else:
         raise NotImplementedError()
 
@@ -232,7 +237,8 @@ def train():
     config = load_config(args.config_file)
     epochs = config["training"].get("epochs", 500)
 
-    net = ... # TODO: Create the network
+    # TODO: Create the network
+    net = Prim3DModel()
     if torch.cuda.device_count() > 1:
         net = torch.nn.DataParallel(net)
     net.cuda()
