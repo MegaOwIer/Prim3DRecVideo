@@ -24,7 +24,7 @@ class Resize_with_pad:
 
     def __call__(self, image):
 
-        w_1, h_1 = image.size()
+        _, w_1, h_1 = image.size()
         ratio_f = self.w / self.h
         ratio_1 = w_1 / h_1
 
@@ -114,10 +114,10 @@ class Datasets(object):
     def load_masks(self, path):
         path = path.strip()
         mask = np.load(path)
-        mask = torch.Tensor(mask)
+        mask = torch.Tensor([mask])
 
         rwp = Resize_with_pad()
-        return rwp(mask)
+        return rwp(mask).squeeze(0)
 
     def load_whole_mesh(self, path):
         path = path.strip()
@@ -203,7 +203,7 @@ class Datasets(object):
     def load_targets(self, template_path, num_parts):
         template_path = template_path.strip()
         path = os.path.join(template_path, 'plys', 'SQ_ply')
-        self.vs, self.fs = [], []
+        vs, fs = [], []
         for i in range(num_parts):
             prim_p = os.path.join(path, str(i) + '.ply')
             mesh = trimesh.load(prim_p, force='mesh', process=False)
@@ -212,9 +212,11 @@ class Datasets(object):
             vertices = torch.Tensor(vertices)
             faces = torch.Tensor(faces)
 
-            self.vs.append(vertices)
-            self.fs.append(faces)
+            vs.append(vertices)
+            fs.append(faces)
 
+        self.vs = vs
+        self.fs = fs
         # calculate centers
         self.part_centers = np.load(os.path.join(template_path, 'part_centers.npy'))
 
@@ -237,7 +239,6 @@ class Datasets(object):
             'fs': self.fs,
             'part_centers': self.part_centers
         }
-        
 
         return data_dict
 

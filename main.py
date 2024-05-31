@@ -188,8 +188,8 @@ def load_init_template_data(path):
     data_path_dict = scipy.io.loadmat(path)
     data_dict = {}
 
-    data_dict['joint_tree'] = torch.Tensor(data_path_dict['joint_tree']).cuda()
-    data_dict['primitive_align'] = torch.Tensor(data_path_dict['primitive_align']).cuda()
+    data_dict['joint_tree'] = torch.Tensor(data_path_dict['joint_tree']).type(torch.IntTensor).cuda()
+    data_dict['primitive_align'] = torch.Tensor(data_path_dict['primitive_align']).type(torch.IntTensor).cuda()
     data_dict['joint_parameter_leaf'] = torch.Tensor(data_path_dict['joint_parameter_leaf']).cuda()
 
     return data_dict
@@ -242,7 +242,7 @@ def train():
     graphAE_param.read_config('./config/graphAE.config')
 
     # TODO: Create the network
-    net = Network_pts(graphAE_param=graphAE_param, test_mode=False, model_type='dino_vits8', 
+    net = Network_pts(graphAE_param=graphAE_param, test_mode=False, model_type='dinov2_vits14', 
                       stride=4, device='cuda', vit_f_dim=args.vit_f_dim)
     if torch.cuda.device_count() > 1:
         net = torch.nn.DataParallel(net)
@@ -284,12 +284,15 @@ def train():
             rgb_image = data_dict['rgb'].cuda()
             o_image = data_dict['o_rgb'].cuda()
             # object_white_mask = data_dict['o_mask'].cuda()
-            object_input_pts = data_dict['vs'].cuda()
+            object_input_pts = data_dict['vs']
+            for i, _ in enumerate(object_input_pts):
+                object_input_pts[i] = object_input_pts[i].cuda()
             init_object_old_center = data_dict['part_centers'].cuda()
             object_num_bones = 2
-            object_joint_tree = init_template_data_dict['joint_tree']
-            object_primitive_align = init_template_data_dict['primitive_align']
-            object_joint_parameter_leaf = init_template_data_dict['joint_parameter_leaf']
+            object_joint_tree = init_template_data_dict['joint_tree'].cuda()
+            object_primitive_align = init_template_data_dict['primitive_align'].cuda()
+            object_joint_parameter_leaf = init_template_data_dict['joint_parameter_leaf'].cuda()
+            object_joint_parameter_leaf = object_joint_parameter_leaf[None, :]
 
             # TODO: pass the input data to the network and generate the predictions
             pred_dict = net(rgb_image, o_image, object_input_pts, init_object_old_center, 

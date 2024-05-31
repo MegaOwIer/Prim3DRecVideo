@@ -76,9 +76,9 @@ class ViTExtractor:
         if ('dino' in model_type) and ('dinov2' not in model_type):
             model = torch.hub.load('facebookresearch/dino:main', model_type)
         elif 'dinov2' in model_type:
-            # model = torch.hub.load('facebookresearch/dinov2:main', model_type)
-            model = torch.hub.load('facebookresearch/dinov2:main', model_type, pretrained=False)
-            model.load_state_dict(torch.load('../../dinov2_weights/dinov2_vits14_pytorch1.pth'))
+            model = torch.hub.load('facebookresearch/dinov2:main', model_type, pretrained=True)
+            # model = torch.hub.load('facebookresearch/dinov2:main', model_type, pretrained=False)
+            model.load_state_dict(torch.load('thirdparty/dinov2/dinov2_vits14_pretrain.pth'))
         else:  # model from timm -- load weights from timm to dino model (enables working on arbitrary size images).
             temp_model = timm.create_model(model_type, pretrained=True)
             model_type_dict = {

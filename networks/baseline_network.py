@@ -329,12 +329,14 @@ class ObjectNetwork_pts(nn.Module):
             self,
             input_pts, old_centers, bone_num, joint_tree, primitive_align,
             joint_parameter_leaf, pred_rotmat_root, pred_angle_leaf,
-            pred_part_scale, pred_total_scale, pred_total_trans, cam_trans):
+            pred_part_scale, pred_total_scale, pred_total_trans):
         '''
             input_pts: name id order
             old_centers: name id order
             pred_part_scale: joint tree order
         '''
+        print('joint_parameter_leaf is', joint_parameter_leaf)
+        print('joint_parameter_leaf.size is', joint_parameter_leaf.size())
 
         end_point0 = joint_parameter_leaf[0]
         end_point1 = joint_parameter_leaf[1]
@@ -352,6 +354,13 @@ class ObjectNetwork_pts(nn.Module):
             if bone_i == 0:
                 the_v = input_pts[primitive_align[bone_i]].clone().cuda()
                 the_old_center = old_centers[primitive_align[bone_i]].clone()
+                
+                # print('old_centers is', old_centers)
+                # print('old_centers.size is', old_centers.size())
+                # print('the_old_center.size is', the_old_center.size())
+                # print('the_old_center is', the_old_center)
+                # print('the_v.size is', the_v.size())
+                # print('the_v is', the_v)
                 the_old_center = the_old_center[None, :].repeat(the_v.size(0), 1)
                 v_zero_centered = torch.sub(the_v, the_old_center[:, None, :].repeat(1, the_v.size(1), 1))
                 the_pred_scale = pred_part_scale[:, bone_i]
@@ -361,6 +370,8 @@ class ObjectNetwork_pts(nn.Module):
                 the_v = torch.add(torch.permute(the_v_rotated, (0, 2, 1)), the_old_center[:, None, :].repeat(1, the_v.size(1), 1))
                 the_v = torch.add(the_v, pred_total_trans[:, None, :].repeat(1, the_v.size(1), 1))
 
+                print('the_old_center.size is', the_old_center.size())
+                print('end_point0.size is', end_point0.size())
                 p0 = torch.sub(end_point0[None, :].repeat(the_old_center.size(0), 1), the_old_center)
                 end_point0_scaled = p0 * the_pred_scale
                 end_point0_scaled = torch.add(end_point0_scaled, the_old_center)
@@ -439,8 +450,7 @@ class ObjectNetwork_pts(nn.Module):
     def forward(self, rgb_image, o_image,
                 object_input_pts, init_object_old_center, object_num_bones,
                 object_joint_tree, object_primitive_align, object_joint_parameter_leaf,
-                cam_trans,
-                layer, facet, bin):
+                ):
         batch_size = rgb_image.size(0)
         # extract feature of the whole image
 
@@ -468,7 +478,8 @@ class ObjectNetwork_pts(nn.Module):
         joint_tree = object_joint_tree[0]
         primitive_align = object_primitive_align[0]
         joint_parameter_leaf = object_joint_parameter_leaf[0]
-
+        init_object_old_center = init_object_old_center[0]
+        
         # mesh feature
         mesh_v = object_input_pts
         mesh_feats = []
@@ -502,7 +513,7 @@ class ObjectNetwork_pts(nn.Module):
             joint_tree, primitive_align, joint_parameter_leaf,
             pred_rotmat_root, pred_angle_leaf, pred_part_scale,
             pred_total_scale, pred_total_trans,
-            cam_trans
+        
         )
 
         # return object_input_pts, deformed_part_center
@@ -525,18 +536,17 @@ class Network_pts(nn.Module):
     def forward(self,
                 rgb_image, o_image,
                 object_input_pts, init_object_old_center, object_num_bones,
-                object_joint_tree, object_primitive_align, object_joint_parameter_leaf,
-                cam_trans,
-                layer, facet, bin
+                object_joint_tree, object_primitive_align, object_joint_parameter_leaf
                 ):
+        
+
 
         object_deformed, object_deformed_part_center, object_pred_rotmat_root, \
         object_pred_angle_leaf, object_pred_total_trans, new_pivot_loc = self.object_network(
             rgb_image, o_image,
             object_input_pts, init_object_old_center, object_num_bones,
             object_joint_tree, object_primitive_align, object_joint_parameter_leaf,
-            cam_trans,
-            layer, facet, bin)
+            )
 
         pred_dict = {}
         pred_dict['deformed_object'] = object_deformed
