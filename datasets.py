@@ -10,6 +10,7 @@ import pytorch3d
 import pytorch3d.structures as p3dstr
 import torchvision.transforms.functional as F
 import pickle
+import glob
 
 # import sys
 # sys.path.append('/Disk2/siqi/NewPrimReg')
@@ -55,8 +56,22 @@ class Datasets(object):
         self.image_size = image_size
         self.transform = T.Resize((self.image_size, self.image_size))
 
-        self.data_list = ... # TODO
+        self.data_list = self.get_all_subdirectories(datamat_path) # TODO
 
+    def get_all_subdirectories(self, path):
+        data_list = []
+        for root, dirs, files in os.walk(path):
+            for dir in dirs:
+                data_list.append(os.path.join(root, dir))
+                data_list.sort()
+        
+        if self.train:
+            # 加载除前六个以外的所有子目录
+            return data_list[6:]
+        else:
+            # 加载前六个子目录
+            return data_list[:6]
+    
     def __len__(self):
         return len(self.data_list)
 
@@ -87,14 +102,14 @@ class Datasets(object):
 
         return img, img_pad_info
 
-    def load_images_v2(self, path):
-        path = path.strip()
-        img = Image.open(path).convert('RGB')
-        img = self.transform(img)
-        img = torch.Tensor(np.array(img))
-        img = torch.permute(img, (2, 0, 1))
+    # def load_images_v2(self, path):
+    #     path = path.strip()
+    #     img = Image.open(path).convert('RGB')
+    #     img = self.transform(img)
+    #     img = torch.Tensor(np.array(img))
+    #     img = torch.permute(img, (2, 0, 1))
 
-        return img
+    #     return img
 
     def load_masks(self, path):
         path = path.strip()
@@ -209,11 +224,23 @@ class Datasets(object):
     def __getitem__(self, index):
         # TODO: load data by index and write to data_dict to be returned
 
-        ...
+        data_path = self.data_list[index]
+        rgb_image_path = sorted(glob.glob(os.path.join(data_path, 'frames', '*.jpg')))
+        mask_image_path = sorted(glob.glob(os.path.join(data_path, 'gt_mask', '*object_mask.npy')))
 
+        rgb_image = self.load_images(rgb_image_path[0])
+        mask = self.load_masks(mask_image_path[0])
 
-        data_dict = {}
-        data_dict['rgb_path'] = ...
+        vs, fs, part_centers = self.load_targets('./SQ_templates/laptop/plys/SQ_ply', 2)
+        data_dict = {
+            'image_name':rgb_image_path,
+            'rgb': rgb_image,
+            'o_mask': mask,
+            'vs': vs,
+            'fs': fs,
+            'part_centers': part_centers
+        }
+        
 
         return data_dict
 

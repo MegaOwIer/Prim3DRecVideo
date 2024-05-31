@@ -24,6 +24,7 @@ except ImportError:
 import datasets
 from model import Prim3DModel
 from renderer_nvdiff import Nvdiffrast
+from networks.baseline_network import Network_pts
 
 """ taken from https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse"""
 def str2bool(v):
@@ -181,15 +182,12 @@ def load_init_template_data(path):
     data_path_dict = scipy.io.loadmat(path)
     data_dict = {}
 
-    init_object_sq = np.load(data_path_dict['object_init_sq_path'][0])
-    data_dict['init_object_sq'] = torch.Tensor(init_object_sq).cuda()
-    init_object_rots = np.load(data_path_dict['object_init_rots_path'][0])
-    data_dict['init_object_rots'] = torch.Tensor(init_object_rots).cuda()
-    init_object_old_center = np.load(data_path_dict['object_init_old_center_path'][0])
-    data_dict['init_object_old_center'] = torch.Tensor(init_object_old_center).cuda()
-
-    data_dict['object_axle'] = data_path_dict['object_axle'][0]
-    data_dict['object_num_bones'] = data_path_dict['object_num_bones'][0][0]
+    joint_tree = np.load(data_path_dict['joint_tree'][0])
+    data_dict['joint_tree'] = torch.Tensor(joint_tree).cuda()
+    primitive_align = np.load(data_path_dict['primitive_align'][0])
+    data_dict['primitive_align'] = torch.Tensor(primitive_align).cuda()
+    joint_parameter_leaf = np.load(data_path_dict['joint_parameter_leaf'][0])
+    data_dict['joint_parameter_leaf'] = torch.Tensor(joint_parameter_leaf).cuda()
 
     return data_dict
 
@@ -238,7 +236,7 @@ def train():
     epochs = config["training"].get("epochs", 500)
 
     # TODO: Create the network
-    net = Prim3DModel()
+    net = Network_pts(vit_f_dim=args.vit_f_dim, res=args.res)
     if torch.cuda.device_count() > 1:
         net = torch.nn.DataParallel(net)
     net.cuda()
@@ -273,13 +271,20 @@ def train():
             data_dict = X
 
             # TODO: load all the data you need from dataloader, not limited
-            image_names = data_dict['image_name']
+            # image_names = data_dict['image_name']
             rgb_image = data_dict['rgb'].cuda()
             o_image = data_dict['o_rgb'].cuda()
-            object_white_mask = data_dict['o_mask'].cuda()
+            # object_white_mask = data_dict['o_mask'].cuda()
+            object_input_pts = data_dict['vs'].cuda()
+            init_object_old_center = data_dict['part_centers'].cuda()
+            object_num_bones = 2
+            object_joint_tree = init_template_data_dict['joint_tree']
+            object_primitive_align = init_template_data_dict['primitive_align']
+            object_joint_parameter_leaf = init_template_data_dict['joint_parameter_leaf']
 
             # TODO: pass the input data to the network and generate the predictions
-            pred_dict = net(...)
+            pred_dict = net(rgb_image, o_image, object_input_pts, init_object_old_center, 
+                            object_num_bones, object_joint_tree, object_primitive_align, object_joint_parameter_leaf)
 
             # TODO: compute loss functions
             loss = ...
