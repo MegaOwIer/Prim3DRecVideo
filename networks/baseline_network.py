@@ -16,7 +16,7 @@ from networks.graphae import GraphAE
 import sys
 
 sys.path.append('../')
-from learnable_primitives.equal_distance_sampler_sq import get_sampler
+# from learnable_primitives.equal_distance_sampler_sq import get_sampler
 from myutils.tools import compute_rotation_matrix_from_ortho6d
 
 

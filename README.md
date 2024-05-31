@@ -14,6 +14,7 @@ conda activate prim3d
 
 # Install thirdparty libraries
 git submodule init
+git submodule update
 cd thirdparty
 python -m pip install -e detectron2/
 ```

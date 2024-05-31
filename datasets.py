@@ -24,7 +24,7 @@ class Resize_with_pad:
 
     def __call__(self, image):
 
-        _, w_1, h_1 = image.size()
+        w_1, h_1 = image.size()
         ratio_f = self.w / self.h
         ratio_1 = w_1 / h_1
 

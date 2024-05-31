@@ -25,6 +25,7 @@ import datasets
 from model import Prim3DModel
 from renderer_nvdiff import Nvdiffrast
 from networks.baseline_network import Network_pts
+from myutils.graphAE_param import Parameters
 
 """ taken from https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse"""
 def str2bool(v):
@@ -40,10 +41,10 @@ def str2bool(v):
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--mode', type=str, default='train', help='Determine if we run the code for training or testing. Chosen from [train, test]')
-parser.add_argument('--log_dir', type=str, default='/Disk3/siqi/NewPrimReg_outputs_aaai/baseline/logs')
+parser.add_argument('--log_dir', type=str, default='./test/baseline/logs')
 parser.add_argument('--gpu_id', type=int, default=0)
 # parser.add_argument('--output_directory', type=str, default='../../NewPrimReg_outputs_iccv/baseline/output_dir')
-parser.add_argument('--output_directory', type=str, default='/Disk3/siqi/NewPrimReg_outputs_aaai/baseline/output_dir')
+parser.add_argument('--output_directory', type=str, default='./test/baseline/output_dir')
 parser.add_argument('--experiment_tag', type=str, default='laptop')
 parser.add_argument('--device', type=str, default='cuda:0')
 # parser.add_argument('--vit_f_dim', type=int, default=3025) # dino
@@ -52,9 +53,16 @@ parser.add_argument('--vit_f_dim', type=int, default=384) # dinov2
 parser.add_argument('--res', type=int, default=224)
 parser.add_argument('--batch_size_train', type=int, default=8, help='Batch size of the training dataloader.')
 parser.add_argument('--batch_size_val', type=int, default=1, help='Batch size of the val dataloader.')
-parser.add_argument('--data_path', type=str, default='/Disk3/siqi/Data/NewPrimReg_collected_matdata_syn/laptop.mat')
+parser.add_argument('--data_path', type=str, default='./datasets/d3dhoi_video_data/laptop')
+parser.add_argument('--datamat_path', type=str, default='./SQ_templates/laptop/joint_info.mat')
+parser.add_argument('--continue_from_epoch', type=int, default=0)
 parser.add_argument('--save_every', type=int, default=200)
 parser.add_argument('--val_every', type=int, default=200)
+parser.add_argument('--config_file', type=str, default='./config/tmp_config.yaml')
+parser.add_argument('--lr', type=float, default=1e-3)
+parser.add_argument('--annealing_lr', type=bool, default=False)
+parser.add_argument('--checkpoint_model_path', type=str, default=None)
+
 # parser.add_argument('--eval_images'
 
 args = parser.parse_args()
@@ -180,12 +188,9 @@ def load_init_template_data(path):
     data_path_dict = scipy.io.loadmat(path)
     data_dict = {}
 
-    joint_tree = np.load(data_path_dict['joint_tree'][0])
-    data_dict['joint_tree'] = torch.Tensor(joint_tree).cuda()
-    primitive_align = np.load(data_path_dict['primitive_align'][0])
-    data_dict['primitive_align'] = torch.Tensor(primitive_align).cuda()
-    joint_parameter_leaf = np.load(data_path_dict['joint_parameter_leaf'][0])
-    data_dict['joint_parameter_leaf'] = torch.Tensor(joint_parameter_leaf).cuda()
+    data_dict['joint_tree'] = torch.Tensor(data_path_dict['joint_tree']).cuda()
+    data_dict['primitive_align'] = torch.Tensor(data_path_dict['primitive_align']).cuda()
+    data_dict['joint_parameter_leaf'] = torch.Tensor(data_path_dict['joint_parameter_leaf']).cuda()
 
     return data_dict
 
@@ -233,8 +238,11 @@ def train():
     config = load_config(args.config_file)
     epochs = config["training"].get("epochs", 500)
 
+    graphAE_param = Parameters()
+    graphAE_param.read_config('./config/graphAE.config')
+
     # TODO: Create the network
-    net = Network_pts(graphAE_param=None, test_mode=False, model_type='dino_vits8', 
+    net = Network_pts(graphAE_param=graphAE_param, test_mode=False, model_type='dino_vits8', 
                       stride=4, device='cuda', vit_f_dim=args.vit_f_dim)
     if torch.cuda.device_count() > 1:
         net = torch.nn.DataParallel(net)
@@ -254,7 +262,7 @@ def train():
     val_dataset = datasets.Datasets(data_path=args.data_path, train=False, image_size=args.res, target_path='./SQ_templates/laptop')
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size_val, shuffle=False, num_workers=1)
     
-    init_template_data_dict = load_init_template_data(args.data_path)
+    init_template_data_dict = load_init_template_data(args.datamat_path)
     print ('Dataloader finished!')
 
     # TODO: create the differtiable renderer
@@ -288,7 +296,7 @@ def train():
                             object_num_bones, object_joint_tree, object_primitive_align, object_joint_parameter_leaf)
 
             # TODO: compute loss functions
-            loss = ...
+            loss = 0
 
             # TODO: write the loss to tensorboard
             writer.add_scalar('train/loss', loss, epoch)
@@ -326,7 +334,8 @@ def train():
 
                 data_dict = X
 
-                pred_dict = net(...)
+                pred_dict = net(rgb_image, o_image, object_input_pts, init_object_old_center, 
+                            object_num_bones, object_joint_tree, object_primitive_align, object_joint_parameter_leaf)
 
                 if epoch % args.save_every == 0:
                     out_path = os.path.join(args.output_directory, experiment_tag)
