@@ -1,5 +1,9 @@
 .DS_Store
-*.npy
+
+# local files
+test/
+datasets/
+d3dhoi*
 
 # IDE config folder
 .vscode/
