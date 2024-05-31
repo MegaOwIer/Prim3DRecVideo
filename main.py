@@ -110,13 +110,11 @@ def optimizer_factory(config, parameters):
             torch.optim.Adam(parameters, lr=lr, weight_decay=weight_decay),
             config.get("aggregate", 1)
         )
-    # ! RAdam is available since torch 1.10 while the environment gives torch 1.9.x
-    # ! temporarily disable these lines
-    # elif optimizer == "RAdam":
-    #     return OptimizerWrapper(
-    #         torch.optim.RAdam(parameters, lr=lr, weight_decay=weight_decay),
-    #         config.get("aggregate", 1)
-    #     )
+    elif optimizer == "RAdam":
+        return OptimizerWrapper(
+            torch.optim.RAdam(parameters, lr=lr, weight_decay=weight_decay),
+            config.get("aggregate", 1)
+        )
     else:
         raise NotImplementedError()
 
@@ -236,7 +234,8 @@ def train():
     epochs = config["training"].get("epochs", 500)
 
     # TODO: Create the network
-    net = Network_pts(vit_f_dim=args.vit_f_dim, res=args.res)
+    net = Network_pts(graphAE_param=None, test_mode=False, model_type='dino_vits8', 
+                      stride=4, device='cuda', vit_f_dim=args.vit_f_dim)
     if torch.cuda.device_count() > 1:
         net = torch.nn.DataParallel(net)
     net.cuda()
@@ -249,10 +248,12 @@ def train():
     load_checkpoints(net, optimizer, experiment_directory, args, device)
 
     # TODO: create the dataloader
-    train_dataset = datasets.Datasets(datamat_path=args.data_path, train=True, image_size=args.res, data_load_ratio=args.data_load_ratio)
+    train_dataset = datasets.Datasets(data_path=args.data_path, train=True, image_size=args.res, target_path='./SQ_templates/laptop')
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size_train, shuffle=True, num_workers=1, drop_last=True)
-    val_dataset = datasets.Datasets(datamat_path=args.data_path, train=False, image_size=args.res, data_load_ratio=args.data_load_ratio)
+
+    val_dataset = datasets.Datasets(data_path=args.data_path, train=False, image_size=args.res, target_path='./SQ_templates/laptop')
     val_dataloader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size_val, shuffle=False, num_workers=1)
+    
     init_template_data_dict = load_init_template_data(args.data_path)
     print ('Dataloader finished!')
 

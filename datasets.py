@@ -50,27 +50,27 @@ class Resize_with_pad:
 
 
 class Datasets(object):
-    def __init__(self, datamat_path, train, image_size, data_load_ratio):
-        self.datamat_path = datamat_path
+    def __init__(self, data_path, train, image_size, target_path, num_parts=2):
+        self.data_path = data_path # TODO
         self.train = train
         self.image_size = image_size
         self.transform = T.Resize((self.image_size, self.image_size))
 
-        self.data_list = self.get_all_subdirectories(datamat_path) # TODO
+        videos = os.listdir(self.data_path)
+        videos = videos[6:] if train else videos[:6]
 
-    def get_all_subdirectories(self, path):
-        data_list = []
-        for root, dirs, files in os.walk(path):
-            for dir in dirs:
-                data_list.append(os.path.join(root, dir))
-                data_list.sort()
-        
-        if self.train:
-            # 加载除前六个以外的所有子目录
-            return data_list[6:]
-        else:
-            # 加载前六个子目录
-            return data_list[:6]
+        self.data_list = []
+        for video in videos:
+            cur_video_path = os.path.join(self.data_path, video)
+
+            frames = os.listdir(os.path.join(cur_video_path, 'frames'))
+            omasks = os.listdir(os.path.join(cur_video_path, 'gt_mask'))
+            assert len(frames) == len(omasks), 'The number of frames and masks should be the same'
+
+            for f, m in zip(frames, omasks):
+                self.data_list.append((os.path.join(cur_video_path, 'frames', f), os.path.join(cur_video_path, 'gt_mask', m)))
+
+        self.load_targets(target_path, num_parts)
     
     def __len__(self):
         return len(self.data_list)
@@ -85,18 +85,18 @@ class Datasets(object):
         image_pad_info = torch.Tensor([top, bottom, left, right, h, w])
         return pad_image, image_pad_info
 
-    def img_preprocess(self, image, input_size=224):
+    def img_preprocess(self, image, input_size):
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         pad_image, image_pad_info = self.padding_image(image)
         input_image = torch.from_numpy(cv2.resize(pad_image, (input_size, input_size), interpolation=cv2.INTER_CUBIC))[
             None].float()
         return input_image, image_pad_info
 
-    def load_images(self, path):
+    def load_image(self, path):
         path = path.strip()
         img = cv2.imread(path)
 
-        img, img_pad_info = self.img_preprocess(img)
+        img, img_pad_info = self.img_preprocess(img, self.image_size)
         img = img.squeeze(0)
         img = torch.permute(img, (2, 0, 1))
 
@@ -113,19 +113,17 @@ class Datasets(object):
 
     def load_masks(self, path):
         path = path.strip()
-        img = Image.open(path).convert('L')
-        img = np.array(img)
-        img = np.reshape(img, (1, img.shape[0], img.shape[1]))
-        img = torch.Tensor(img)
-        rwp = Resize_with_pad()
-        img = rwp(img)
+        mask = np.load(path)
+        mask = torch.Tensor(mask)
 
-        return img
+        rwp = Resize_with_pad()
+        return rwp(mask)
 
     def load_whole_mesh(self, path):
         path = path.strip()
 
         mesh = trimesh.load(path, force='mesh')
+        # trimesh.Geometry
         vertices = mesh.vertices
         faces = mesh.faces
 
@@ -202,9 +200,10 @@ class Datasets(object):
 
             return o_sqs_rots, o_sqs_trans, o_sqs_scale
 
-    def load_targets(self, path, num_parts):
-        path = path.strip()
-        vs, fs = [], []
+    def load_targets(self, template_path, num_parts):
+        template_path = template_path.strip()
+        path = os.path.join(template_path, 'plys', 'SQ_ply')
+        self.vs, self.fs = [], []
         for i in range(num_parts):
             prim_p = os.path.join(path, str(i) + '.ply')
             mesh = trimesh.load(prim_p, force='mesh', process=False)
@@ -213,35 +212,35 @@ class Datasets(object):
             vertices = torch.Tensor(vertices)
             faces = torch.Tensor(faces)
 
-            vs.append(vertices)
-            fs.append(faces)
+            self.vs.append(vertices)
+            self.fs.append(faces)
 
         # calculate centers
-        part_centers = self.cal_bbox_center(vs, fs)
-
-        return vs, fs, part_centers
+        self.part_centers = np.load(os.path.join(template_path, 'part_centers.npy'))
 
     def __getitem__(self, index):
         # TODO: load data by index and write to data_dict to be returned
 
-        data_path = self.data_list[index]
-        rgb_image_path = sorted(glob.glob(os.path.join(data_path, 'frames', '*.jpg')))
-        mask_image_path = sorted(glob.glob(os.path.join(data_path, 'gt_mask', '*object_mask.npy')))
+        image_path, omask_path = self.data_list[index]
+        image, _ = self.load_image(image_path)
+        mask = self.load_masks(omask_path)
 
-        rgb_image = self.load_images(rgb_image_path[0])
-        mask = self.load_masks(mask_image_path[0])
+        obj_image = image.clone().detach()
+        obj_image[:, mask == 0] = 0
 
-        vs, fs, part_centers = self.load_targets('./SQ_templates/laptop/plys/SQ_ply', 2)
         data_dict = {
-            'image_name':rgb_image_path,
-            'rgb': rgb_image,
+            'image_name': image_path,
+            'rgb': image,
             'o_mask': mask,
-            'vs': vs,
-            'fs': fs,
-            'part_centers': part_centers
+            'o_rgb': obj_image,
+            'vs': self.vs,
+            'fs': self.fs,
+            'part_centers': self.part_centers
         }
         
 
         return data_dict
 
-
+if __name__ == '__main__':
+    train_dataset = Datasets(data_path='./datasets/d3dhoi_video_data/laptop', train=True, image_size=224, target_path='./SQ_templates/laptop')
+    train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True, num_workers=1, drop_last=True)
