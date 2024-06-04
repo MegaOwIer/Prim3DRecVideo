@@ -63,16 +63,16 @@ class Renderer(nn.Module):
                                                   min_x=-1.0, device=self.device)
             self.lights = DirectionalLights(direction=torch.Tensor([[0., 1., 0.]]), device=self.device)
 
-    def __call__(self, verts, faces, res, colors=np.array(colors['neutral']), merge_meshes=False, cam_params=None,
+    def __call__(self, verts, faces, res = (224,224), colors=np.array(colors['neutral']), merge_meshes=False, cam_params=None,
                  **kwargs):
-        assert len(verts.shape) == 3, print('The input verts of visualizer is bounded to be 3-dims (Nx6890 x3) tensor')
+        # assert len(verts.shape) == 3, print('The input verts of visualizer is bounded to be 3-dims (Nx6890 x3) tensor')
 
         # print ('resolution[0] =', resolution[0])
         # os._exit(0)
-        res = res.int()
+        
         # print (res[0].item(), res[1].item())
         # os._exit(0)
-        resolution = (res[0].item(), res[1].item())
+        resolution = (224,224)
 
         # setup resolution for each image
         raster_settings = RasterizationSettings(

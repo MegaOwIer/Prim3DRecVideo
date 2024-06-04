@@ -4,9 +4,10 @@ import nvdiffrast.torch as dr
 import trimesh
 import torch
 import numpy as np
-import pytorch3d.transforms
+# import pytorch3d.transforms
 
-
+def tensor(*args, **kwargs):
+    return torch.tensor(*args, device='cuda', **kwargs)
 class Nvdiffrast(object):
     def __init__(self, FOV=60, height=512, width=512, focal_length=None):
         if focal_length is None:
@@ -83,7 +84,7 @@ class Nvdiffrast(object):
         return P
 
     def render_seg_map(self, v_pos_clip, faces, colors, render_reso):
-        glctx = dr.RasterizeGLContext()
+        glctx = dr.RasterizeCudaContext()
         with dr.DepthPeeler(glctx, v_pos_clip, faces, render_reso) as peeler:
             for layer_idx in range(1):
                 rast, _ = peeler.rasterize_next_layer()
@@ -93,11 +94,11 @@ class Nvdiffrast(object):
 
         return seg_map
 
-    def __call__(self, mesh, image_pad_info, focal_length):
-        verts = mesh.vertices
+    def __call__(self, mesh, image_pad_info = [0,0,0,0,224,224], focal_length = 983):
+        verts = torch.Tensor(mesh.vertices).cuda()
         verts = torch.matmul(self.rot, torch.permute(verts, (1, 0)))
         verts = torch.permute(verts, (1, 0))
-        faces = mesh.faces
+        faces = torch.tensor(mesh.faces).type(torch.IntTensor).cuda()
 
         top, bottom, left, right, height, width = image_pad_info
         if focal_length == 0:
@@ -106,13 +107,25 @@ class Nvdiffrast(object):
             the_focal_length = focal_length
         render_reso = (height, width)
 
-        # proj = self.intrinsics(fx=the_focal_length, fy=the_focal_length, cx=width / 2, cy=height / 2)
-        proj = self.intrinsics_v2(yfov=self.yfov, cx=width / 2, cy=height / 2)
+        proj = self.intrinsics(fx=the_focal_length, fy=the_focal_length, cx=width / 2, cy=height / 2)
+        # proj = self.intrinsics(yfov=self.yfov, cx=width / 2, cy=height / 2)
         mvp = proj @ self.mv
         v_pos_clip = self.xfm_points(verts[None, ...], mvp[None, ...])
 
-        seg_map = self.render_seg_map(v_pos_clip, faces, mesh.colors, render_reso)  # torch.Size([1, ori_h, ori_w, 3])
+        # print(mesh.visual.vertex_colors.shape)
+        # exit(0)
+        # mesh.visual.face_colors = trimesh.visual.random_color()
+        # print(mesh.visual.face_colors)
+        # exit(0)
+        # col = tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=torch.float32)
+        # print(faces)
+        # exit(0) 
+        seg_map = self.render_seg_map(v_pos_clip, faces, torch.Tensor(mesh.visual.face_colors).cuda(),
+                                       render_reso)  # torch.Size([1, ori_h, ori_w, 3])
 
+        #tmp = seg_map.detach().cpu().numpy()
+        #print(tmp)
+        #print(tmp.sum())
         return seg_map
 
 

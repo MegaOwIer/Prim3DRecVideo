@@ -57,6 +57,7 @@ class Datasets(object):
         self.transform = T.Resize((self.image_size, self.image_size))
 
         videos = os.listdir(self.data_path)
+        videos.sort()
         videos = videos[6:] if train else videos[:6]
 
         self.data_list = []
@@ -64,11 +65,32 @@ class Datasets(object):
             cur_video_path = os.path.join(self.data_path, video)
 
             frames = os.listdir(os.path.join(cur_video_path, 'frames'))
+            frames.sort()
             omasks = os.listdir(os.path.join(cur_video_path, 'gt_mask'))
+            omasks.sort()
             assert len(frames) == len(omasks), 'The number of frames and masks should be the same'
 
-            for f, m in zip(frames, omasks):
-                self.data_list.append((os.path.join(cur_video_path, 'frames', f), os.path.join(cur_video_path, 'gt_mask', m)))
+            jointstate_path = os.path.join(cur_video_path, 'jointstate.txt')
+            with open(jointstate_path, "r") as f:
+                joint_states = f.readlines()
+            
+            _3dinfo_path = os.path.join(cur_video_path, '3d_info.txt')
+            with open(_3dinfo_path, "r") as f:
+                content = f.readlines()
+            
+            _3d_info = dict()
+            for line in content:
+                line = line.strip().split(':')
+                if len(line) == 2:
+                    _3d_info[line[0].strip()] = line[1].strip()
+
+            n_frames = len(frames)
+            for i in range(n_frames):
+                f = frames[i]
+                m = omasks[i]
+                joint_state = (float(joint_states[i].strip()) - 90) / 180.0 * np.pi
+                self.data_list.append((os.path.join(cur_video_path, 'frames', f), os.path.join(cur_video_path, 'gt_mask', m), 
+                                       joint_state, _3d_info))
 
         self.load_targets(target_path, num_parts)
     
@@ -102,19 +124,10 @@ class Datasets(object):
 
         return img, img_pad_info
 
-    # def load_images_v2(self, path):
-    #     path = path.strip()
-    #     img = Image.open(path).convert('RGB')
-    #     img = self.transform(img)
-    #     img = torch.Tensor(np.array(img))
-    #     img = torch.permute(img, (2, 0, 1))
-
-    #     return img
-
     def load_masks(self, path):
         path = path.strip()
-        mask = np.load(path)
-        mask = torch.Tensor([mask])
+        mask = np.expand_dims(np.load(path), 0)
+        mask = torch.Tensor(mask)
 
         rwp = Resize_with_pad()
         return rwp(mask).squeeze(0)
@@ -216,19 +229,24 @@ class Datasets(object):
             fs.append(faces)
 
         self.vs = vs
-        self.fs = fs
+        self.fs = fs    
+        
         # calculate centers
         self.part_centers = np.load(os.path.join(template_path, 'part_centers.npy'))
 
     def __getitem__(self, index):
         # TODO: load data by index and write to data_dict to be returned
 
-        image_path, omask_path = self.data_list[index]
+        image_path, omask_path, joint_state, _3d_info = self.data_list[index]
         image, _ = self.load_image(image_path)
         mask = self.load_masks(omask_path)
 
         obj_image = image.clone().detach()
         obj_image[:, mask == 0] = 0
+
+        # cv2.imwrite('./test/obj_image.png', obj_image.permute(1, 2, 0).numpy())
+        # cv2.imwrite('./test/rbg.png',image.permute(1, 2, 0).numpy())
+        # exit(0)
 
         data_dict = {
             'image_name': image_path,
@@ -237,7 +255,9 @@ class Datasets(object):
             'o_rgb': obj_image,
             'vs': self.vs,
             'fs': self.fs,
-            'part_centers': self.part_centers
+            'part_centers': self.part_centers,
+            'joint_state': torch.tensor([joint_state]),
+            '3d_info': _3d_info
         }
 
         return data_dict

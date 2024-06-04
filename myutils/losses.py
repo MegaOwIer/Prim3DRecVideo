@@ -30,7 +30,7 @@ import torch.nn as nn
 import numpy as np
 import pytorch3d
 import pytorch3d.loss as p3dloss
-from lapsolver import solve_dense
+# from lapsolver import solve_dense
 import torch.nn.functional as F
 
 

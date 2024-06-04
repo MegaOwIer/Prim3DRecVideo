@@ -1,3 +1,6 @@
 [submodule "thirdparty/detectron2"]
 	path = thirdparty/detectron2
 	url = https://github.com/facebookresearch/detectron2.git
+[submodule "thirdparty/pytorch3d"]
+	path = thirdparty/pytorch3d
+	url = git@github.com:facebookresearch/pytorch3d.git

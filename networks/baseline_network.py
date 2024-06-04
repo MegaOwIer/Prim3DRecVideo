@@ -1,23 +1,13 @@
-import cv2
-import os
+import math
+
+import pytorch3d.transforms
 import torch
 import torch.nn as nn
-import pytorch3d
-import pytorch3d.transforms as p3dt
-import faiss
-import numpy as np
-import romp
-import math
 import torchvision
 
-from networks.vitextractor import ViTExtractor
-from networks.graphae import GraphAE
-
-import sys
-
-sys.path.append('../')
-# from learnable_primitives.equal_distance_sampler_sq import get_sampler
 from myutils.tools import compute_rotation_matrix_from_ortho6d
+from networks.graphae import GraphAE
+from networks.vitextractor import ViTExtractor
 
 
 class TransPredictor(nn.Module):
@@ -302,7 +292,8 @@ class ObjectNetwork_pts(nn.Module):
         for param in self.mesh_encoder.parameters():
             param.requires_grad = False
 
-    def cal_rotmat_from_angle_around_axis(self, all_joint_axis, all_the_pred_angle):
+    @staticmethod
+    def cal_rotmat_from_angle_around_axis(all_joint_axis, all_the_pred_angle):
         batch_size = all_joint_axis.size(0)
         all_rotmat = []
         for i in range(batch_size):
@@ -325,8 +316,8 @@ class ObjectNetwork_pts(nn.Module):
 
         return all_rotmat
 
+    @staticmethod
     def deform(
-            self,
             input_pts, old_centers, bone_num, joint_tree, primitive_align,
             joint_parameter_leaf, pred_rotmat_root, pred_angle_leaf,
             pred_part_scale, pred_total_scale, pred_total_trans):
@@ -335,8 +326,6 @@ class ObjectNetwork_pts(nn.Module):
             old_centers: name id order
             pred_part_scale: joint tree order
         '''
-        print('joint_parameter_leaf is', joint_parameter_leaf)
-        print('joint_parameter_leaf.size is', joint_parameter_leaf.size())
 
         end_point0 = joint_parameter_leaf[0]
         end_point1 = joint_parameter_leaf[1]
@@ -354,13 +343,8 @@ class ObjectNetwork_pts(nn.Module):
             if bone_i == 0:
                 the_v = input_pts[primitive_align[bone_i]].clone().cuda()
                 the_old_center = old_centers[primitive_align[bone_i]].clone()
-                
-                # print('old_centers is', old_centers)
-                # print('old_centers.size is', old_centers.size())
-                # print('the_old_center.size is', the_old_center.size())
-                # print('the_old_center is', the_old_center)
-                # print('the_v.size is', the_v.size())
-                # print('the_v is', the_v)
+                #print(the_v.shape)
+                #input()
                 the_old_center = the_old_center[None, :].repeat(the_v.size(0), 1)
                 v_zero_centered = torch.sub(the_v, the_old_center[:, None, :].repeat(1, the_v.size(1), 1))
                 the_pred_scale = pred_part_scale[:, bone_i]
@@ -368,10 +352,9 @@ class ObjectNetwork_pts(nn.Module):
                 the_v_scaled = v_zero_centered * the_pred_scale[:, None, :].repeat(1, v_zero_centered.size(1), 1)  # [8, 738, 3]
                 the_v_rotated = torch.matmul(pred_rotmat_root, torch.permute(the_v_scaled, (0, 2, 1)))  # [8, 3, 738]
                 the_v = torch.add(torch.permute(the_v_rotated, (0, 2, 1)), the_old_center[:, None, :].repeat(1, the_v.size(1), 1))
+                #print(pred_total_trans.shape)
                 the_v = torch.add(the_v, pred_total_trans[:, None, :].repeat(1, the_v.size(1), 1))
 
-                print('the_old_center.size is', the_old_center.size())
-                print('end_point0.size is', end_point0.size())
                 p0 = torch.sub(end_point0[None, :].repeat(the_old_center.size(0), 1), the_old_center)
                 end_point0_scaled = p0 * the_pred_scale
                 end_point0_scaled = torch.add(end_point0_scaled, the_old_center)
@@ -405,7 +388,7 @@ class ObjectNetwork_pts(nn.Module):
                 the_v = torch.sub(the_v, old_pivot_loc[:, None, :].repeat(1, the_v.size(1), 1))
                 new_center = torch.sub(the_old_center, old_pivot_loc)
                 the_pred_angle = pred_angle_leaf[:, bone_i-1]
-                the_rotmat = self.cal_rotmat_from_angle_around_axis(joint_axis, the_pred_angle)  # [8, 3, 3]
+                the_rotmat = ObjectNetwork_pts.cal_rotmat_from_angle_around_axis(joint_axis, the_pred_angle)  # [8, 3, 3]
 
                 # rotate around the axis
                 the_v = torch.matmul(the_rotmat, torch.permute(the_v, (0, 2, 1)))
@@ -417,6 +400,8 @@ class ObjectNetwork_pts(nn.Module):
                 new_center = torch.permute(new_center, (0, 2, 1))
                 new_center = torch.add(new_center, pivot_scaled_store[:, None, :].repeat(1, the_v.size(1), 1))
 
+                #print(joint_tree.shape)
+                #input()
                 old_center_parent = old_centers[primitive_align[joint_tree[bone_i]]]
                 old_center_parent = old_center_parent[None, :].repeat(the_v.size(0), 1)
                 the_v = torch.sub(the_v, old_center_parent[:, None, :].repeat(1, the_v.size(1), 1))
@@ -477,7 +462,7 @@ class ObjectNetwork_pts(nn.Module):
 
         joint_tree = object_joint_tree[0]
         primitive_align = object_primitive_align[0]
-        joint_parameter_leaf = object_joint_parameter_leaf[0]
+        joint_parameter_leaf = object_joint_parameter_leaf
         init_object_old_center = init_object_old_center[0]
         
         # mesh feature
@@ -538,15 +523,13 @@ class Network_pts(nn.Module):
                 object_input_pts, init_object_old_center, object_num_bones,
                 object_joint_tree, object_primitive_align, object_joint_parameter_leaf
                 ):
-        
-
 
         object_deformed, object_deformed_part_center, object_pred_rotmat_root, \
         object_pred_angle_leaf, object_pred_total_trans, new_pivot_loc = self.object_network(
             rgb_image, o_image,
             object_input_pts, init_object_old_center, object_num_bones,
             object_joint_tree, object_primitive_align, object_joint_parameter_leaf,
-            )
+        )
 
         pred_dict = {}
         pred_dict['deformed_object'] = object_deformed
@@ -555,5 +538,6 @@ class Network_pts(nn.Module):
         pred_dict['object_pred_angle_leaf'] = object_pred_angle_leaf
         pred_dict['object_pred_total_trans'] = object_pred_total_trans
         pred_dict['deformed_object_pivot_loc'] = new_pivot_loc
+        
 
         return pred_dict

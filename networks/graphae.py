@@ -1,11 +1,6 @@
-import os
-import torch
-import torchvision
-import torch.nn as nn
-from collections import OrderedDict
 import numpy as np
-import pytorch3d.transforms as p3dt
-import faiss
+import torch
+import torch.nn as nn
 
 
 class GraphAE(nn.Module):
