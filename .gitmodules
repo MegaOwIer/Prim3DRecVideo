@@ -4,3 +4,6 @@
 [submodule "thirdparty/pytorch3d"]
 	path = thirdparty/pytorch3d
 	url = git@github.com:facebookresearch/pytorch3d.git
+[submodule "thirdparty/nvdiffrast"]
+	path = thirdparty/nvdiffrast
+	url = git@github.com:NVlabs/nvdiffrast.git
