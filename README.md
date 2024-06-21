@@ -20,6 +20,7 @@ git submodule update
 cd thirdparty
 pip install -e detectron2/
 pip install -e pytorch3d/
+pip install -e nvdiffrast/
 ```
 
 ## Usage
