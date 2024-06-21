@@ -17,11 +17,15 @@ class Nvdiffrast(object):
         rot = trimesh.transformations.rotation_matrix(
             np.radians(180), [1, 0, 0])
         rot = torch.Tensor(rot).cuda()
+        # rot = torch.eye(4).cuda()
         self.rot = rot[:3, :3]
 
         self.yfov = np.radians(FOV)
 
         self.mv = torch.eye(4).cuda()
+        # self.mv = trimesh.transformations.rotation_matrix(
+        #     np.radians(90), [1, 0, 0])
+        # self.mv = torch.Tensor(self.mv).cuda()
         self.campos = torch.linalg.inv(self.mv)[:3, 3]
 
     def xfm_points(self, points, matrix):
@@ -94,7 +98,7 @@ class Nvdiffrast(object):
 
         return seg_map
 
-    def __call__(self, mesh, image_pad_info = [0,0,0,0,224,224], focal_length = 983):
+    def __call__(self, mesh, image_pad_info = [0,0,0,0,224,224], focal_length = 300):
         verts = torch.Tensor(mesh.vertices).cuda()
         verts = torch.matmul(self.rot, torch.permute(verts, (1, 0)))
         verts = torch.permute(verts, (1, 0))

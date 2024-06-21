@@ -6,8 +6,6 @@ Team project for CS7352 of SJTU.
 
 ## Environment Setup
 
-**Alert**: the `environment.yml` may be NOT up to date, so this setup instruction may not work.
-
 We are using CUDA 11.8 in our test. If you're using a different version of CUDA, you may need to manually adjust version of some packages such as `torch`.
 
 ```sh
@@ -26,4 +24,12 @@ pip install -e pytorch3d/
 
 ## Usage
 
-[Explain how to use your project, including any necessary commands or configurations.]
+To run this project, execute the following command in conda environment
+
+```sh
+python main.py [...args]
+```
+
+You may need to extract the `D3DHOI` dataset into `datasets/d3dhoi_video_data/` to make sure the default values of arguments work.
+
+After training and testing, you will get the predicted position info in `test/baseline/output_dir/laptop/visualize_results`, and you can use `ply2mp4.py` to visualize it.

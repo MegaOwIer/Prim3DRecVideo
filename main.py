@@ -1,24 +1,22 @@
-'''
-The main code for training the model
-'''
-import cv2
 import argparse
 import json
 import os
 import random
 import string
 
+import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.io
+import seaborn as sns
 import torch
 import torch.utils.data
-import yaml
 import trimesh
+import yaml
+from PIL import Image
 from tensorboardX import SummaryWriter
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-from PIL import Image
 
 try:
     from yaml import CLoader as Loader
@@ -26,17 +24,15 @@ except ImportError:
     from yaml import Loader
 
 import datasets
-from model import Prim3DModel
-from renderer_nvdiff import Nvdiffrast
-from networks.baseline_network import Network_pts
+from LossFunc import compute_loss
 from myutils.graphAE_param import Parameters
-from myutils.renderer_pt3d import Renderer
 from myutils.visualization_utils import _from_primitive_parms_to_mesh_v2
-from visualize import visualize_sq, reformMeshData, visualize_mesh
-import seaborn as sns
+from networks.baseline_network import Network_pts
+from renderer_nvdiff import Nvdiffrast
+from visualize import visualize_mesh
+
 sns.set()
 
-from LossFunc import compute_loss, Reform
 
 """ taken from https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse"""
 def str2bool(v):
@@ -299,27 +295,18 @@ def test():
     # Load the checkpoints if they exist in the experiment directory
     load_checkpoints(net, optimizer, experiment_directory, args, device)
 
-
-    def check(arr1, arr2):
-        ret = 0
-        for u, v in zip(arr1, arr2):
-            ret += (u - v).abs().sum()
-        return ret
-    def hook_fn(module, grad_input, grad_output):
-        print(f'Grad Input: {grad_input}')
-        print(f'Grad Output: {grad_output}')
-
-
-    test_dataset = datasets.Datasets(data_path=args.data_path, train=False, image_size=args.res, target_path='./SQ_templates/laptop', test_file=1)
+    test_dataset = datasets.Datasets(data_path=args.data_path, train=False, image_size=args.res, target_path='./SQ_templates/laptop')
     test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size_val, shuffle=False, num_workers=1, drop_last=True)
     
     init_template_data_dict = load_init_template_data(args.datamat_path)
     print ('Dataloader finished!')
 
-    #renderer = Renderer()
+    renderer = Nvdiffrast(FOV=39.6)
     print ('Renderer set!')
 
     print ('Start Testing!')
+
+    angle_list = ""
 
     for imgi, X in enumerate(test_dataloader):
         data_dict = X
@@ -354,6 +341,69 @@ def test():
         pred_vs = pred_dict['deformed_object']
         visualize_mesh(img_name=image_names, vertices = pred_vs, faces = object_input_fs, 
                         out_path = out_path)
+        
+        # Rendering 
+        colors = sns.color_palette("Paired")
+
+        images = []
+        for bone_idx in range(object_num_bones):
+            vi = pred_dict['deformed_object'][bone_idx] # (bs, num_points, 3)
+            images.append(vi)
+        
+        m = None
+        for bone_idx in range(object_num_bones):
+            # out_path = os.path.join(filename, 'bone-' + str(bone_idx) + '.ply')
+            vi = images[bone_idx].cpu().detach().data.numpy()
+            vi = vi.squeeze(0)
+
+            _m = _from_primitive_parms_to_mesh_v2(vi, (colors[bone_idx % len(colors)]) + (1.0,))
+            m = trimesh.util.concatenate(_m, m)
+            
+        render_img = renderer(m).squeeze(0).detach().cpu().numpy()
+        ori_img = rgb_image.squeeze(0).permute(1, 2, 0).detach().cpu().numpy()
+
+        render_img = cv2.cvtColor(render_img, cv2.COLOR_BGRA2BGR)
+
+        mask = cv2.cvtColor(render_img, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(mask, 30, 255, cv2.THRESH_BINARY)
+        plt.imsave('test/mask.png', mask / 256)
+        mask_inv = cv2.bitwise_not(mask)
+        mask_inv = cv2.cvtColor(mask_inv, cv2.COLOR_GRAY2RGB)
+
+        ori_img = cv2.bitwise_and(ori_img, mask_inv)
+        img = cv2.add(ori_img, render_img)
+
+        ori_shape = data_dict['shape'].detach().cpu().numpy().astype(int).reshape(3)
+        #print(ori_shape)
+
+        if ori_shape[0] < ori_shape[1]:
+            tmp = int((ori_shape[1] - ori_shape[0])/2)
+            img = cv2.resize(img, [ori_shape[1], ori_shape[1]])
+            img = img[tmp:(ori_shape[1]-tmp), :]
+        else:
+            tmp = int((ori_shape[0] - ori_shape[1])/2)
+            img = cv2.resize(img, [ori_shape[0], ori_shape[0]])
+            img = img[:, tmp:(ori_shape[0]-tmp)]
+
+        image_names = str(image_names).split('/')
+        pred_angle = float(pred_dict['object_pred_angle_leaf'].detach().cpu().numpy())
+        pred_angle = pred_angle / np.pi * 180 + 90
+
+        tmp_angle_list = image_names[-3] + "_" + image_names[-1][:-6] + ": " + str(pred_angle) + "\n"
+        #print(tmp_angle_list)
+        angle_list = angle_list + tmp_angle_list
+
+
+        
+        # plt.imsave('test/rendered.png', render_img / 256)
+        # plt.imsave('test/ori.png', ori_img / 256)
+        plt.imsave("test/final/result_{0}_{1}.png".format(image_names[-3], image_names[-1][:-4]), img / 256)
+        # exit(0)
+
+        file = open("./test/angle.txt", 'w')
+        file.write(str(angle_list))
+        file.close()
+        
         
 
     
@@ -416,19 +466,6 @@ def train():
     # Load the checkpoints if they exist in the experiment directory
     load_checkpoints(net, optimizer, experiment_directory, args, device)
 
-    # last_param = list(net.parameters())
-
-    # def check(arr1, arr2):
-    #     ret = 0
-    #     for u, v in zip(arr1, arr2):
-    #         ret += (u - v).abs().sum()
-    #     return ret
-    def hook_fn(module, grad_input, grad_output):
-        print(f'Grad Input: {grad_input}')
-        print(f'Grad Output: {grad_output}')
-
-
-
     # TODO: create the dataloader
     train_dataset = datasets.Datasets(data_path=args.data_path, train=True, image_size=args.res, target_path='./SQ_templates/laptop')
     train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size_train, shuffle=True, num_workers=1, drop_last=True)
@@ -441,7 +478,6 @@ def train():
 
     # TODO: create the differtiable renderer
     renderer = Nvdiffrast(FOV=39.6)
-    #renderer = Renderer()
     print ('Renderer set!')
 
     print ('Start Training!')
@@ -469,7 +505,6 @@ def train():
             object_joint_tree = init_template_data_dict['joint_tree'].cuda()
             object_primitive_align = init_template_data_dict['primitive_align'].cuda()
             object_joint_parameter_leaf = init_template_data_dict['joint_parameter_leaf'].cuda()
-            _3d_info = data_dict['3d_info']
 
             # TODO: pass the input data to the network and generate the predictions
             pred_dict = net(rgb_image, o_image, object_input_pts, init_object_old_center, 
@@ -486,58 +521,48 @@ def train():
             #     print(name, param.requires_grad)
 
             # TODO: compute loss functions
-            # print(object_input_fs[0].shape)
 
-            pred_seg_imgs = []
-            camera_matrix = np.array([[983, 0, 112],
-                          [0, 983, 112],
-                          [0, 0, 1]], dtype=np.float32)
-            dist_coeffs = np.zeros((4, 1)) 
+            # camera_matrix = np.array([[983, 0, 112],
+            #               [0, 983, 112],
+            #               [0, 0, 1]], dtype=np.float32)
+            # dist_coeffs = np.zeros((4, 1))
 
             colors = sns.color_palette("Paired")
 
-            # images = [[] for i in range(args.batch_size_train)]
-            # for bone_idx in range(object_num_bones):
-            #     vs = pred_dict['deformed_object'][bone_idx] # (bs, num_points, 3)
-            #     for bsi in range(args.batch_size_train):
-            #         vi = vs[bsi] # (num_points, 3)
-            #         images[bsi].append(vi)
+            # mesh_vs = Reform(data_dict, init_template_data_dict, args.batch_size_train, object_num_bones)
+            # mesh_fs = data_dict['fs']
 
-            # for bsi in range(args.batch_size_train):
-            #     image_curr = images[bsi]
-            #     m = None
-            #     for bone_idx in range(object_num_bones):
-            #         # out_path = os.path.join(filename, 'bone-' + str(bone_idx) + '.ply')
-            #         vi = image_curr[bone_idx].cpu().detach().data.numpy()
+            pred_seg_imgs = torch.empty(args.batch_size_train, 224, 224)
+            images = [[] for i in range(args.batch_size_train)]
+            for bone_idx in range(object_num_bones):
+                vs = pred_dict['deformed_object'][bone_idx] # (bs, num_points, 3)
+                for bsi in range(args.batch_size_train):
+                    vi = vs[bsi] # (num_points, 3)
+                    images[bsi].append(vi)
 
-            #         _m = _from_primitive_parms_to_mesh_v2(vi, (colors[bone_idx % len(colors)]) + (1.0,))
-            #         m = trimesh.util.concatenate(_m, m)
+            for bsi in range(args.batch_size_train):
+                image_curr = images[bsi]
+                m = None
+                for bone_idx in range(object_num_bones):
+                    # out_path = os.path.join(filename, 'bone-' + str(bone_idx) + '.ply')
+                    vi = image_curr[bone_idx].cpu().detach().data.numpy()
+
+                    _m = _from_primitive_parms_to_mesh_v2(vi, (colors[bone_idx % len(colors)]) + (1.0,))
+                    m = trimesh.util.concatenate(_m, m)
                     
-            #         print(m.vertices, file = open('./test/temp_mesh.txt', 'w'))
-            #         input()
-            #     pred_seg_imgs.append(renderer(m).squeeze(0) / 256)
-            # #print(pred_seg_imgs[1])
-            # plt.imsave('test/test.png', pred_seg_imgs[5].detach().cpu().numpy())
-            # plt.show()
-            # exit(0)
+                rendered_img = renderer(m).squeeze(0).detach().cpu().numpy()
+                rendered_img = cv2.cvtColor(rendered_img, cv2.COLOR_BGR2GRAY)
+                _, rendered_img = cv2.threshold(rendered_img, 125, 255, cv2.THRESH_BINARY)
+                
+                #print(np.shape(rendered_img))
+                #pred_seg_imgs.append(torch.Tensor(rendered_img))
+                pred_seg_imgs[bsi] = torch.Tensor(rendered_img/255)
+                #print(pred_seg_imgs[bsi].size())
+                #exit(0)
+            #plt.imsave('test/test.png', pred_seg_imgs[5])
+            #exit(0)
 
-            # for pts in pred_dict['deformed_object']:
-            #     m = None
-            #     for i in range(2):
-            #         vi = pts[i].cpu().detach().data.numpy()
-            #         _m = _from_primitive_parms_to_mesh_v2(vi, (colors[i % len(colors)]) + (1.0,))
-            #         m = trimesh.util.concatenate(_m, m)
-            #     pred_seg_imgs.append(renderer(m))
-            #     #pred_seg_imgs.append(mesh_to_mask_with_camera(m, camera_matrix=camera_matrix, dist_coeffs=dist_coeffs, rvec=rvec, tvec=tvec))
-            # #print(pred_seg_imgs[0])
-            # pred_seg_imgs[0] = pred_seg_imgs[0].squeeze(0)
-            # #print(pred_seg_imgs[0].size())
-            # plt.imsave('test/test.png', pred_seg_imgs[0].detach().cpu().numpy())
-            # plt.show()
-            # exit(0)
-
-            loss = compute_loss(pred_dict, data_dict, init_template_data_dict, args.batch_size_train)
-            # print(loss.requires_grad)
+            loss = compute_loss(pred_dict, data_dict, init_template_data_dict, pred_seg_imgs, args.batch_size_train)
 
             # TODO: write the loss to tensorboard
             writer.add_scalar('train/loss', loss, epoch)
@@ -567,7 +592,7 @@ def train():
                 args
             )
 
-        if epoch % args.val_every == 0 and False:
+        if epoch % args.val_every == 0:
             print("====> Validation Epoch ====>")
             net.eval()
 
@@ -582,7 +607,7 @@ def train():
                 pred_dict = net(rgb_image, o_image, object_input_pts, init_object_old_center, 
                             object_num_bones, object_joint_tree, object_primitive_align, object_joint_parameter_leaf)
 
-                if epoch % args.save_every == 0:
+                if epoch % args.save_every == 0 or True:
                     out_path = os.path.join(args.output_directory, experiment_tag)
                     if not os.path.exists(out_path):
                         os.makedirs(out_path)

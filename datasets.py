@@ -118,11 +118,13 @@ class Datasets(object):
         path = path.strip()
         img = cv2.imread(path)
 
+        ori_shape = np.shape(img)
+
         img, img_pad_info = self.img_preprocess(img, self.image_size)
         img = img.squeeze(0)
         img = torch.permute(img, (2, 0, 1))
 
-        return img, img_pad_info
+        return img, img_pad_info, torch.Tensor(ori_shape)
 
     def load_masks(self, path):
         path = path.strip()
@@ -238,7 +240,7 @@ class Datasets(object):
         # TODO: load data by index and write to data_dict to be returned
 
         image_path, omask_path, joint_state, _3d_info = self.data_list[index]
-        image, _ = self.load_image(image_path)
+        image, _, ori_shape = self.load_image(image_path)
         mask = self.load_masks(omask_path)
 
         obj_image = image.clone().detach()
@@ -257,7 +259,8 @@ class Datasets(object):
             'fs': self.fs,
             'part_centers': self.part_centers,
             'joint_state': torch.tensor([joint_state]),
-            '3d_info': _3d_info
+            '3d_info': _3d_info,
+            'shape': ori_shape
         }
 
         return data_dict

@@ -58,7 +58,7 @@ metrics:
 
 training:
     splits: ["train", "val"]
-    epochs: 802 # 801 #501
+    epochs: 800
     steps_per_epoch: 500
     save_frequency: 10
     batch_size: 1
